@@ -62,7 +62,7 @@ BASE_CMD = (
 
 def run(cmd):
     try:
-        out = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60).stdout
+        out = subprocess.run(cmd, shell=True, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60).stdout
         return json.loads(out)
     except Exception:
         return {}
@@ -86,8 +86,10 @@ def token_price_data(t):
     chain = t.get("chain")
     if not address or not chain:
         return None
+    gmgn_cli = str(Path.home() / "AppData/Roaming/npm/gmgn-cli.cmd")
     cmd = [
-        "gmgn-cli", "token", "info", "--chain", chain,
+        "cmd.exe", "/d", "/c", gmgn_cli,
+        "token", "info", "--chain", chain,
         "--address", address, "--raw",
     ]
     try:
@@ -105,7 +107,7 @@ def token_price_data(t):
 
 def token_price_map(hits):
     """Fetch exact snapshots for the full eligible universe with bounded concurrency."""
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    with ThreadPoolExecutor(max_workers=1) as pool:
         snapshots = list(pool.map(token_price_data, hits))
     return {
         (t.get("chain"), t.get("address")): snapshot
@@ -163,7 +165,7 @@ def flow_5m(t, price_data=None):
 
 def load_config():
     """Read chain toggles + interval from chains.json (repo-friendly config)."""
-    cfg_path = Path(__file__).resolve().parent / "chains.json"
+    cfg_path = Path(__file__).resolve().parent.parent / "config" / "chains.json"
     if cfg_path.exists():
         try:
             return json.loads(cfg_path.read_text())
@@ -189,15 +191,8 @@ def build():
         cmd = base.format(c=chain, lim=LIMIT, gates=gates)
         chain_hits[ch["title"]] = [t for t in gather(cmd) if safe_for_dlmm(t)]
 
-    # Fetch snapshots for a wider candidate pool so we can rank by V/L.
-    pool = []
-    for hits in chain_hits.values():
-        pool.extend(hits[:25])
-    price_by_address = token_price_map(pool)
-
-    def snapshot_for(t):
-        return price_by_address.get((t.get("chain"), t.get("address")))
-
+    # Rank candidates by V/L, then fetch snapshots until each chain
+    # has up to 5 candidates with complete snapshot data.
     def rank_key(t):
         vol = float(t.get("volume") or 0)
         liq = float(t.get("liquidity") or 0)
@@ -205,6 +200,28 @@ def build():
 
     for title in chain_hits:
         chain_hits[title].sort(key=rank_key, reverse=True)
+
+    # Snapshot candidates sequentially. Failed snapshots are skipped,
+    # so the report does not show 0 / 0 / - for a failed request.
+    price_by_address = {}
+    selected_hits = {}
+
+    for title, hits in chain_hits.items():
+        selected = []
+        for t in hits:
+            snapshot = token_price_data(t)
+            if snapshot:
+                key = (t.get("chain"), t.get("address"))
+                price_by_address[key] = snapshot
+                selected.append(t)
+            if len(selected) >= 5:
+                break
+        selected_hits[title] = selected
+
+    chain_hits = selected_hits
+
+    def snapshot_for(t):
+        return price_by_address.get((t.get("chain"), t.get("address")))
 
     try:
         local_tz = ZoneInfo(RADAR_TIMEZONE)

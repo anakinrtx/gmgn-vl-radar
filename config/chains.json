@@ -1,18 +1,18 @@
 {
   "interval_min": 10,
-  "note": "interval_min is the cron cadence in minutes. Set the Hermes cron schedule to */{interval_min} * * * * to match. Or use the cron helper below.",
+  "note": "GMGN V/L radar. BASE disabled. Filters kept close to original ayehuasca logic.",
   "chains": [
     {
       "enabled": true,
       "title": "SOLANA",
       "chain": "sol",
-      "extra_gates": "--filter has_social --filter not_wash_trading --min-gas-fee 20 --min-smart-degen-count 2 --min-swaps 500 --min-marketcap 1000"
+      "extra_gates": "--filter has_social --filter not_wash_trading --min-liquidity 2500 --min-holder-count 200 --min-created 30m --min-gas-fee 20 --min-smart-degen-count 2 --min-swaps 500 --min-marketcap 1000"
     },
     {
-      "enabled": false,
+      "enabled": true,
       "title": "ROBINHOOD",
       "chain": "robinhood",
-      "extra_gates": "--min-swaps 300 --min-marketcap 1000 --max-marketcap 5000000"
+      "extra_gates": "--min-liquidity 1000 --min-holder-count 30 --min-created 30m --min-swaps 300 --min-marketcap 1000 --max-marketcap 5000000"
     },
     {
       "enabled": false,
